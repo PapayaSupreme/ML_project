@@ -1,6 +1,7 @@
 from src.models.linear import LinearMultiClassModel
 from src.utilities.vectorize_images import load_vectorized_digits
 from src.utilities.train_test_splitter import train_test_split
+from src.utilities.debug_utils import load_debug_tiles
 
 import numpy as np
 
@@ -22,12 +23,14 @@ if __name__ == "__main__":
 
     print("=== DATA IS READY ===")
     end = False
+    last_model = None
     while not end:
         choice = -1
         while choice < 0 or choice > 6:
             print("\n=== MAIN MENU ===")
             print("1. (re)Load data")
             print("2. Train & test the linear Model")
+            print("3. Test a random debug tile with the last trained model")
             print("6. [WIP] Train & test the neural network model")
             print("0. EXIT")
             choice = int(input("Enter your choice: "))
@@ -83,6 +86,9 @@ if __name__ == "__main__":
 
                 print(f"Train loss before: {train_loss_before:.6f}, after: {train_loss_after:.6f}")
                 print(f"Validation error before: {val_err_before:.4f}, after: {val_err_after:.4f}")
+                # store trained model reference
+                last_model = model
+                print("Last trained model stored in memory. You can now use option 3 to test debug tiles.")
 
             elif sub_choice == 2:
                 try:
@@ -114,6 +120,38 @@ if __name__ == "__main__":
                     tol=tol,
                     verbose=True,
                 )
+                # Keep reference to the last trained model in memory
+                last_model = model
+                print("Last trained model stored in memory. You can now use option 3 to test debug tiles.")
+            # end training subchoices
+        elif choice == 3:
+            # Test a random debug tile image using the last trained model
+            if last_model is None:
+                print("No trained model available. Train the linear model first (option 2).")
+            else:
+                try:
+                    X_debug, names = load_debug_tiles(normalize=True)
+                except Exception as e:
+                    print(f"Could not load debug tiles: {e}")
+                    continue
+
+                idx = np.random.randint(0, X_debug.shape[0])
+                x = X_debug[idx:idx+1]
+                name = names[idx]
+
+                probs = last_model.softmax(last_model.forward(x))
+                pred = int(np.argmax(probs, axis=1)[0])
+
+                # show top probabilities
+                top_k = 3
+                top_idx = np.argsort(probs[0])[::-1][:top_k]
+                top_probs = [(int(i), float(probs[0, i])) for i in top_idx]
+
+                print(f"Debug tile: {name}")
+                print(f"Predicted digit: {pred}")
+                print("Top probabilities:")
+                for digit, p in top_probs:
+                    print(f"  {digit}: {p:.4f}")
         elif choice == 3:
             print("[WIP]")
         elif choice == 4:
