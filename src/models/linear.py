@@ -39,6 +39,7 @@ class LinearMultiClassModel:
         Returns:
             o: score vector of shape (10,1)
         """
+        x = x.reshape(-1)
         return self.A @ x + self.b
 
     def forward(self, X: np.ndarray) -> np.ndarray:
@@ -73,3 +74,112 @@ class LinearMultiClassModel:
 
         exp_O = np.exp(O_shifted)
         return exp_O / np.sum(exp_O, axis=1, keepdims=True)
+
+    def cross_entropy_loss(self, X, y):
+        scores = self.forward(X)
+        P = self.softmax(scores)
+
+        n = X.shape[0]
+        return -np.mean(np.log(P[np.arange(n), y] + 1e-15))
+
+    def gradients(self, X, y):
+        n = X.shape[0]
+
+        scores = self.forward(X)
+        P = self.softmax(scores)
+
+        Y = np.zeros_like(P)
+        Y[np.arange(n), y] = 1
+
+        dO = (P - Y) / n
+
+        dA = dO.T @ X
+        db = np.sum(dO, axis=0)
+
+        return dA, db
+
+    def train(self, X, y, lr=0.1, epochs=100):
+        for epoch in range(epochs):
+            loss = self.cross_entropy_loss(X, y)
+            print(f"epoch {epoch}, loss = {loss}")
+            
+            dA, db = self.gradients(X, y)
+
+            self.A -= lr * dA
+            self.b -= lr * db
+
+    def step_gradient(self, X, y, lr: float = 0.1):
+        """
+        Perform a single full-batch gradient descent update and return the
+        gradients that were applied.
+        """
+        dA, db = self.gradients(X, y)
+        self.A -= lr * dA
+        self.b -= lr * db
+        return dA, db
+
+    def train_verbose(
+        self,
+        X_train,
+        y_train,
+        X_val=None,
+        y_val=None,
+        lr: float = 0.1,
+        max_epochs: int = 1000,
+        tol: float = 0.01,
+        verbose: bool = True,
+    ):
+        """
+        Train the model and print progress each epoch. If validation data is
+        provided the stopping criterion is based on validation loss change;
+        otherwise training loss is used.
+
+        Returns a history dict with lists: train_loss, val_loss, val_error.
+        """
+        history = {"train_loss": [], "val_loss": [], "val_error": []}
+
+        if X_val is not None and y_val is not None:
+            prev_loss = self.cross_entropy_loss(X_val, y_val)
+        else:
+            prev_loss = self.cross_entropy_loss(X_train, y_train)
+
+        if verbose:
+            if X_val is not None and y_val is not None:
+                print(f"Epoch 0: train_loss={self.cross_entropy_loss(X_train,y_train):.6f}, val_loss={prev_loss:.6f}, val_err={self.error_rate(X_val,y_val):.4f}")
+            else:
+                print(f"Epoch 0: train_loss={prev_loss:.6f}, val_err={self.error_rate(X_train,y_train):.4f}")
+
+        for epoch in range(1, max_epochs + 1):
+            # perform one training step
+            self.step_gradient(X_train, y_train, lr=lr)
+
+            train_loss = self.cross_entropy_loss(X_train, y_train)
+            if X_val is not None and y_val is not None:
+                val_loss = self.cross_entropy_loss(X_val, y_val)
+                val_err = self.error_rate(X_val, y_val)
+            else:
+                val_loss = train_loss
+                val_err = self.error_rate(X_train, y_train)
+
+            history["train_loss"].append(train_loss)
+            history["val_loss"].append(val_loss)
+            history["val_error"].append(val_err)
+
+            if verbose:
+                print(f"Epoch {epoch}: train_loss={train_loss:.6f}, val_loss={val_loss:.6f}, val_err={val_err:.4f}")
+
+            if abs(prev_loss - val_loss) < tol:
+                if verbose:
+                    print(f"Converged at epoch {epoch} (loss change {abs(prev_loss - val_loss):.6f} < {tol})")
+                break
+
+            prev_loss = val_loss
+
+        else:
+            if verbose:
+                print("Reached max epochs without meeting tolerance.")
+
+        return history
+    def error_rate(self, X, y):
+        predictions = self.predict(X)
+        return np.mean(predictions != y)
