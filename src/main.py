@@ -1,4 +1,7 @@
+import torch
+
 from src.models.linear import LinearMultiClassModel
+from src.models.neural_network import NeuralNetworkModel
 from src.utilities.vectorize_images import load_vectorized_digits
 from src.utilities.train_test_splitter import train_test_split
 from src.utilities.debug_utils import load_debug_tiles
@@ -26,12 +29,13 @@ if __name__ == "__main__":
     last_model = None
     while not end:
         choice = -1
-        while choice < 0 or choice > 6:
+        while choice < 0 or choice > 5:
             print("\n=== MAIN MENU ===")
             print("1. (re)Load data")
             print("2. Train & test the linear Model")
             print("3. Test a random debug tile with the last trained model")
-            print("6. [WIP] Train & test the neural network model")
+            print("4. Train & test the neural network model")
+            print("5. Load a trained neural model")
             print("0. EXIT")
             choice = int(input("Enter your choice: "))
         if choice == 1:
@@ -127,7 +131,7 @@ if __name__ == "__main__":
         elif choice == 3:
             # Test a random debug tile image using the last trained model
             if last_model is None:
-                print("No trained model available. Train the linear model first (option 2).")
+                print("No trained model available. Train a model first (option 2 or 5).")
             else:
                 try:
                     X_debug, names = load_debug_tiles(normalize=True)
@@ -139,27 +143,62 @@ if __name__ == "__main__":
                 x = X_debug[idx:idx+1]
                 name = names[idx]
 
-                probs = last_model.softmax(last_model.forward(x))
-                pred = int(np.argmax(probs, axis=1)[0])
-
-                # show top probabilities
-                top_k = 3
-                top_idx = np.argsort(probs[0])[::-1][:top_k]
-                top_probs = [(int(i), float(probs[0, i])) for i in top_idx]
+                # Check if model is LinearMultiClassModel or NeuralNetworkModel
+                if isinstance(last_model, LinearMultiClassModel):
+                    # Linear model: use numpy-based softmax
+                    probs = last_model.softmax(last_model.forward(x))
+                    pred = int(np.argmax(probs, axis=1)[0])
+                    # show top probabilities
+                    top_k = 3
+                    top_idx = np.argsort(probs[0])[::-1][:top_k]
+                    top_probs = [(int(i), float(probs[0, i])) for i in top_idx]
+                else:
+                    # NeuralNetworkModel: expects a flat vector and returns logits as list
+                    x_flat = x.flatten()
+                    logits = last_model.forward(x_flat)
+                    # Convert logits to probabilities (softmax)
+                    logits_arr = np.array(logits)
+                    exp_logits = np.exp(logits_arr - np.max(logits_arr))
+                    probs = exp_logits / np.sum(exp_logits)
+                    pred = int(np.argmax(probs))
+                    # show top probabilities
+                    top_k = 3
+                    top_idx = np.argsort(probs)[::-1][:top_k]
+                    top_probs = [(int(i), float(probs[i])) for i in top_idx]
 
                 print(f"Debug tile: {name}")
                 print(f"Predicted digit: {pred}")
                 print("Top probabilities:")
                 for digit, p in top_probs:
                     print(f"  {digit}: {p:.4f}")
-        elif choice == 3:
-            print("[WIP]")
         elif choice == 4:
-            print("[WIP]")
+            for a in range(2):
+                models, losses = [], []
+                for j in range(30):
+                    nn_model = NeuralNetworkModel(784, 10, a + 1, 16)
+
+                    loss = 0
+                    for i in range(len(X)):
+                        image, result = X[i], y[i]
+                        prediction = nn_model.forward(image)
+                        loss += -np.log(prediction[result] + 0.00001)
+                        nn_model.its_backpropagation_time(prediction, image, result, 0.05)
+                    avg_loss = loss / len(X)
+
+                    models.append(nn_model)
+                    losses.append(avg_loss)
+                    print(str(j) + " : " + str(round(avg_loss, 4)))
+
+                minIndex = 0
+                for k in range(len(losses)):
+                    if losses[k] < losses[minIndex]: minIndex = k
+                print("Minimum on model " + str(minIndex) + " at loss = " + str(round(losses[minIndex], 4)))
+                torch.save(models[minIndex].state_dict(), str(a + 1) + "_hidden.pth")
         elif choice == 5:
-            print("[WIP]")
-        elif choice == 6:
-            print("[WIP]")
+            nn_model = NeuralNetworkModel(784, 10, 1, 3)
+            nn_model.load_state_dict(torch.load("1_hidden.pth"))
+            last_model = nn_model
+            print("Neural network model loaded and stored in memory. You can now use option 3 to test debug tiles.")
         elif choice == 0:
             end = True
     print("Shutting down...")
