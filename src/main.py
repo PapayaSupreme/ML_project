@@ -1,7 +1,10 @@
 import torch
+from pathlib import Path
 
 from src.models.linear import LinearMultiClassModel
-from src.models.neural_network import NeuralNetworkModel
+# Import both neural network implementations with distinct names
+from src.models.neural_network import NeuralNetworkModel as NNModel
+from src.models.neural_network_fixed import NeuralNetworkModel as NNFixedModel
 from src.utilities.vectorize_images import load_vectorized_digits
 from src.utilities.train_test_splitter import train_test_split
 from src.utilities.debug_utils import load_debug_tiles
@@ -29,13 +32,14 @@ if __name__ == "__main__":
     last_model = None
     while not end:
         choice = -1
-        while choice < 0 or choice > 5:
+        while choice < 0 or choice > 6:
             print("\n=== MAIN MENU ===")
             print("1. (re)Load data")
             print("2. Train & test the linear Model")
             print("3. Test a random debug tile with the last trained model")
-            print("4. Train & test the neural network model")
+            print("4. Train & test the neural network model (original)")
             print("5. Load a trained neural model")
+            print("6. Train & test the neural network model (fixed implementation)")
             print("0. EXIT")
             choice = int(input("Enter your choice: "))
         if choice == 1:
@@ -139,9 +143,9 @@ if __name__ == "__main__":
                     print(f"Could not load debug tiles: {e}")
                     continue
 
-                idx = np.random.randint(0, X_debug.shape[0])
+                idx = int(np.random.randint(0, X_debug.shape[0]))
                 x = X_debug[idx:idx+1]
-                name = names[idx]
+                name = str(names[int(idx)])
 
                 # Check if model is LinearMultiClassModel or NeuralNetworkModel
                 if isinstance(last_model, LinearMultiClassModel):
@@ -172,33 +176,113 @@ if __name__ == "__main__":
                 for digit, p in top_probs:
                     print(f"  {digit}: {p:.4f}")
         elif choice == 4:
-            for a in range(2):
-                models, losses = [], []
-                for j in range(30):
-                    nn_model = NeuralNetworkModel(784, 10, a + 1, 16)
+            try:
+                test_ratio_in = input("Validation ratio (0.0-0.5) [default 0.2]: ")
+                test_ratio = float(test_ratio_in) if test_ratio_in.strip() != "" else 0.2
+            except ValueError:
+                test_ratio = 0.2
 
-                    loss = 0
-                    for i in range(len(X)):
-                        image, result = X[i], y[i]
+            X_train, X_val, y_train, y_val = train_test_split(X, y, test_ratio=test_ratio, seed=42)
+
+            for a in range(2):
+                models, val_losses = [], []
+                for j in range(30):
+                    # use the original neural network implementation
+                    nn_model = NNModel(784, 10, a + 1, 16)
+
+                    train_loss = 0
+                    for i in range(len(X_train)):
+                        image, result = X_train[i], y_train[i]
                         prediction = nn_model.forward(image)
-                        loss += -np.log(prediction[result] + 0.00001)
+                        train_loss += -np.log(prediction[result] + 0.00001)
                         nn_model.its_backpropagation_time(prediction, image, result, 0.05)
-                    avg_loss = loss / len(X)
+                    avg_train_loss = train_loss / len(X_train)
+
+                    val_loss = 0
+                    for i in range(len(X_val)):
+                        image, result = X_val[i], y_val[i]
+                        prediction = nn_model.forward(image)
+                        val_loss += -np.log(prediction[result] + 0.00001)
+                    avg_val_loss = val_loss / len(X_val)
 
                     models.append(nn_model)
-                    losses.append(avg_loss)
-                    print(str(j) + " : " + str(round(avg_loss, 4)))
+                    val_losses.append(avg_val_loss)
+                    print(str(j) + " : train_loss=" + str(round(avg_train_loss, 4)) + ", val_loss=" + str(round(avg_val_loss, 4)))
 
                 minIndex = 0
-                for k in range(len(losses)):
-                    if losses[k] < losses[minIndex]: minIndex = k
-                print("Minimum on model " + str(minIndex) + " at loss = " + str(round(losses[minIndex], 4)))
+                for k in range(len(val_losses)):
+                    if val_losses[k] < val_losses[minIndex]:
+                        minIndex = k
+                print("Minimum on model " + str(minIndex) + " at val_loss = " + str(round(val_losses[minIndex], 4)))
                 torch.save(models[minIndex].state_dict(), str(a + 1) + "_hidden.pth")
+        elif choice == 6:
+            # Train using the fixed neural network implementation
+            try:
+                test_ratio_in = input("Validation ratio (0.0-0.5) [default 0.2]: ")
+                test_ratio = float(test_ratio_in) if test_ratio_in.strip() != "" else 0.2
+            except ValueError:
+                test_ratio = 0.2
+
+            X_train, X_val, y_train, y_val = train_test_split(X, y, test_ratio=test_ratio, seed=42)
+
+            for a in range(2):
+                models, val_losses = [], []
+                for j in range(30):
+                    # use the fixed neural network implementation
+                    nn_model = NNFixedModel(784, 10, a + 1, 16)
+
+                    train_loss = 0
+                    for i in range(len(X_train)):
+                        image, result = X_train[i], y_train[i]
+                        prediction = nn_model.forward(image)
+                        train_loss += -np.log(prediction[result] + 0.00001)
+                        nn_model.its_backpropagation_time(prediction, image, result, 0.05)
+                    avg_train_loss = train_loss / len(X_train)
+
+                    val_loss = 0
+                    for i in range(len(X_val)):
+                        image, result = X_val[i], y_val[i]
+                        prediction = nn_model.forward(image)
+                        val_loss += -np.log(prediction[result] + 0.00001)
+                    avg_val_loss = val_loss / len(X_val)
+
+                    models.append(nn_model)
+                    val_losses.append(avg_val_loss)
+                    print(str(j) + " : train_loss=" + str(round(avg_train_loss, 4)) + ", val_loss=" + str(round(avg_val_loss, 4)))
+
+                minIndex = 0
+                for k in range(len(val_losses)):
+                    if val_losses[k] < val_losses[minIndex]:
+                        minIndex = k
+                print("Minimum on model " + str(minIndex) + " at val_loss = " + str(round(val_losses[minIndex], 4)))
+                # save with a different suffix to avoid overwriting original implementation checkpoints
+                torch.save(models[minIndex].state_dict(), str(a + 1) + "_hidden_fixed.pth")
         elif choice == 5:
-            nn_model = NeuralNetworkModel(784, 10, 1, 3)
-            nn_model.load_state_dict(torch.load("1_hidden.pth"))
+            # Load the checkpoint using the same architecture that was used when saving it.
+            nn_model = NNModel(784, 10, 1, 16)
+            nn_model.load_state_dict(torch.load("1_hidden.pth", map_location="cpu"))
+            nn_model.eval()
+
+            try:
+                test_ratio_in = input("Validation ratio (0.0-0.5) [default 0.2]: ")
+                test_ratio = float(test_ratio_in) if test_ratio_in.strip() != "" else 0.2
+            except ValueError:
+                test_ratio = 0.2
+
+            _, X_val, _, y_val = train_test_split(X, y, test_ratio=test_ratio, seed=42)
+
+            correct = 0
+            for i in range(len(X_val)):
+                probs = np.array(nn_model.forward(X_val[i]))
+                pred = int(np.argmax(probs))
+                correct += int(pred == y_val[i])
+
+            accuracy = correct / len(X_val)
+
             last_model = nn_model
-            print("Neural network model loaded and stored in memory. You can now use option 3 to test debug tiles.")
+            print("Neural network model loaded from 1_hidden.pth")
+            print(f"Validation accuracy: {accuracy:.4f}")
+            print("Neural network model stored in memory. You can now use option 3 to test debug tiles.")
         elif choice == 0:
             end = True
     print("Shutting down...")

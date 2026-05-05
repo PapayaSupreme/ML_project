@@ -159,3 +159,4 @@ class NeuralNetworkModel(torch.nn.Module):
                 for q in range(self.layers[h].out_features):
                     for k in range(self.layers[h].in_features):
                         self.layers[h].weight[q][k] -= d * weight_grads[h][q][k]
+
