@@ -5,6 +5,7 @@ from src.models.linear import LinearMultiClassModel
 # Import both neural network implementations with distinct names
 from src.models.neural_network import NeuralNetworkModel as NNModel
 from src.models.neural_network_fixed import NeuralNetworkModel as NNFixedModel
+from src.utilities.vectorize_image_alt import load_vectorized_digits_alt
 from src.utilities.vectorize_images import load_vectorized_digits
 from src.utilities.train_test_splitter import train_test_split
 from src.utilities.debug_utils import load_debug_tiles
@@ -26,7 +27,26 @@ if __name__ == "__main__":
     print("Saved vectors to: data/vectorized_output/X_vectors.npy")
     print("Saved labels to:  data/vectorized_output/y_labels.npy")
     print("Saved debug files to: data/vectorized_output/debug/")
+    X_alt, y_alt = load_vectorized_digits_alt(
+        normalize=True,
+        save_vectors=True,
+        save_debug=True,
+        rotate_degrees=90,
+        shift_up_pixels=0,
+        shift_right_pixels=2,
+    )
 
+    print(f"X_alt shape: {X_alt.shape}, dtype: {X.dtype}")
+    print(f"y_alt shape: {y_alt.shape}, labels: {np.unique(y)}")
+    print("Saved vectors to: data/vectorized_output_alt/X_vectors.npy")
+    print("Saved labels to:  data/vectorized_output_alt/y_labels.npy")
+    print("Saved debug files to: data/vectorized_output_alt/debug/")
+
+
+    choice_alt = int(input("use original or alternative (rotated / translated) vectors ? 1 for original 2 for alt."))
+    if choice_alt == 2:
+        X = X_alt
+        y = y_alt
     print("=== DATA IS READY ===")
     end = False
     last_model = None
